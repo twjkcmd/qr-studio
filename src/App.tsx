@@ -9,7 +9,7 @@ const PRINT_DPI = 300
 
 function App() {
   const [mousePosition, setMousePosition] = useState({ x: 50, y: 50 })
-  const animationFrameRef = useRef<number>()
+  const animationFrameRef = useRef<number | undefined>(undefined)
   const targetPositionRef = useRef({ x: 50, y: 50 })
   const currentPositionRef = useRef({ x: 50, y: 50 })
 
