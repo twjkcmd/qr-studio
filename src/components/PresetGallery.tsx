@@ -11,7 +11,7 @@ export default function PresetGallery({ currentConfig, onApplyPreset }: PresetGa
   const presetToQRConfig = (preset: QRPreset): QRConfig => {
     const color = preset.config.color
     return {
-      data: currentConfig.data,
+      data: 'https://example.com',
       size: 100,
       margin: 5,
       dotsType: preset.config.dotsType,

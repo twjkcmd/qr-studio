@@ -45,6 +45,11 @@ export default function QRPreview({ config, showExportButtons = true }: QRPrevie
 
   // Initialize QR code instance
   useEffect(() => {
+    // Don't initialize if there's no data
+    if (!config.data) {
+      return
+    }
+
     const dotsOptions: any = {
       type: config.dotsType,
     }
@@ -135,12 +140,31 @@ export default function QRPreview({ config, showExportButtons = true }: QRPrevie
       qrRef.current.innerHTML = ''
       qrCodeRef.current.append(qrRef.current)
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.data])
+
+  // Clear QR when data becomes empty (synchronous, before conditional render)
+  useEffect(() => {
+    if (!config.data && qrRef.current) {
+      console.log('Synchronously clearing QR container due to empty data')
+      qrRef.current.innerHTML = ''
+    }
+  }, [config.data])
 
   // Update QR code when config changes (debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
+      console.log('QRPreview update - config.data:', config.data, 'type:', typeof config.data, 'isEmpty:', !config.data)
       if (qrCodeRef.current) {
+        if (!config.data) {
+          // Clear the QR when there's no data
+          console.log('Clearing QR container')
+          if (qrRef.current) {
+            qrRef.current.innerHTML = ''
+          }
+          return
+        }
+
         const dotsOptions: any = {
           type: config.dotsType,
         }
@@ -268,9 +292,21 @@ export default function QRPreview({ config, showExportButtons = true }: QRPrevie
   }
 
   return (
-    <div className="flex flex-col items-center gap-6">
-      <div ref={qrRef} className="rounded-lg" />
-      {showExportButtons && (
+    <div className="flex flex-col items-center gap-6 w-full">
+      {/* Middle content area - QR/placeholder display */}
+      <div className="flex items-center justify-center w-full min-h-[300px]">
+        <div className="relative flex items-center justify-center">
+          {/* Always render the QR container */}
+          <div ref={qrRef} className="rounded-lg" />
+          {/* Opaque overlay placeholder when data is empty */}
+          {!config.data && (
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] border-2 border-dashed border-glass-border rounded-lg flex items-center justify-center bg-glass-bg backdrop-blur-[20px]">
+              <span className="text-muted font-jetbrains text-xs tracking-[0.02em]">Enter details to generate</span>
+            </div>
+          )}
+        </div>
+      </div>
+      {showExportButtons && config.data && (
         <div className="flex gap-3">
           <button
             onClick={handleDownloadPNG}

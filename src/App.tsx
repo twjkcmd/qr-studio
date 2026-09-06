@@ -7,11 +7,99 @@ import './App.css'
 
 const PRINT_DPI = 300
 
+type DataType = 'url' | 'text' | 'wifi' | 'contact'
+
 function App() {
   const [mousePosition, setMousePosition] = useState({ x: 50, y: 50 })
   const animationFrameRef = useRef<number | undefined>(undefined)
   const targetPositionRef = useRef({ x: 50, y: 50 })
   const currentPositionRef = useRef({ x: 50, y: 50 })
+  
+  // Data type selector state
+  const [dataType, setDataType] = useState<DataType>('url')
+  
+  // Mode-specific data states
+  const [urlData, setUrlData] = useState('https://example.com')
+  const [textData, setTextData] = useState('')
+  const [wifiData, setWifiData] = useState({
+    ssid: '',
+    password: '',
+    security: 'WPA' as 'WPA' | 'WEP' | 'none',
+    showPassword: false
+  })
+  const [contactData, setContactData] = useState({
+    fullName: '',
+    phone: '',
+    email: '',
+    company: '',
+    website: ''
+  })
+  
+  // Helper function to escape special characters for Wi-Fi format
+  const escapeWifiString = (str: string): string => {
+    return str.replace(/([\\;,:])/g, '\\$1')
+  }
+  
+  // Compute QR data based on active mode
+  const getQRData = (currentDataType: DataType, currentUrlData: string, currentTextData: string, currentWifiData: typeof wifiData, currentContactData: typeof contactData): string => {
+    switch (currentDataType) {
+      case 'url':
+        return currentUrlData.trim()
+      
+      case 'text':
+        return currentTextData.trim()
+      
+      case 'wifi':
+        const { ssid, password, security } = currentWifiData
+        if (!ssid.trim()) return ''
+        
+        const escapedSsid = escapeWifiString(ssid.trim())
+        const escapedPassword = escapeWifiString(password.trim())
+        
+        if (security === 'none') {
+          return `WIFI:T:nopass;S:${escapedSsid};;`
+        }
+        
+        const securityType = security === 'WPA' ? 'WPA' : 'WEP'
+        return `WIFI:T:${securityType};S:${escapedSsid};P:${escapedPassword};;`
+      
+      case 'contact':
+        const { fullName, phone, email, company, website } = currentContactData
+        if (!fullName.trim() && !phone.trim() && !email.trim()) return ''
+        
+        // Parse full name into first/last (simple split on space)
+        const nameParts = fullName.trim().split(' ')
+        const firstName = nameParts[0] || ''
+        const lastName = nameParts.slice(1).join(' ') || ''
+        
+        let vcard = 'BEGIN:VCARD\nVERSION:3.0\n'
+        
+        if (lastName || firstName) {
+          vcard += `N:${lastName};${firstName}\n`
+        }
+        if (fullName.trim()) {
+          vcard += `FN:${fullName.trim()}\n`
+        }
+        if (company.trim()) {
+          vcard += `ORG:${company.trim()}\n`
+        }
+        if (phone.trim()) {
+          vcard += `TEL:${phone.trim()}\n`
+        }
+        if (email.trim()) {
+          vcard += `EMAIL:${email.trim()}\n`
+        }
+        if (website.trim()) {
+          vcard += `URL:${website.trim()}\n`
+        }
+        
+        vcard += 'END:VCARD'
+        return vcard
+      
+      default:
+        return ''
+    }
+  }
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -44,7 +132,7 @@ function App() {
   }, [])
   const [sizeUnit, setSizeUnit] = useState<'px' | 'mm'>('px')
   const [config, setConfig] = useState<QRConfig>({
-    data: 'https://example.com',
+    data: getQRData(dataType, urlData, textData, wifiData, contactData),
     size: 300,
     margin: 10,
     dotsType: 'square',
@@ -61,6 +149,14 @@ function App() {
     logoSize: 0.2,
     logoMargin: 10,
   })
+  
+  // Update config.data when QR data changes
+  useEffect(() => {
+    const newData = getQRData(dataType, urlData, textData, wifiData, contactData)
+    console.log('App.tsx - Updating config.data:', newData, 'dataType:', dataType, 'textData:', textData)
+    setConfig(prev => ({ ...prev, data: newData }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataType, urlData, textData, wifiData.ssid, wifiData.password, wifiData.security, contactData.fullName, contactData.phone, contactData.email, contactData.company, contactData.website])
 
   const pxToMm = (px: number): number => {
     return (px / PRINT_DPI) * 25.4
@@ -105,7 +201,7 @@ function App() {
           filter: 'blur(10px)'
         }}
       />
-      <div className="max-w-7xl mx-auto px-4 py-12">
+      <div className="max-w-7xl mx-auto px-4 pt-16 pb-12">
         <div className="text-center mb-12">
           <h1 className="text-[clamp(40px,5vw,64px)] font-inter text-primary leading-[1.05] mb-4">QR Studio</h1>
           <p className="text-muted font-jetbrains text-lg max-w-[48ch] mx-auto">Create custom QR codes</p>
@@ -116,16 +212,175 @@ function App() {
           <div className="space-y-6">
             {/* Data Input */}
             <div className="bg-glass-bg backdrop-blur-[20px] border border-glass-border rounded-2xl p-6">
-              <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
-                Your link
-              </label>
-              <input
-                type="text"
-                value={config.data}
-                onChange={(e) => setConfig({ ...config, data: e.target.value })}
-                className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
-                placeholder="Enter URL or text"
-              />
+              {/* Data Type Selector */}
+              <div className="flex bg-background/50 rounded-lg p-0.5 mb-4">
+                {(['url', 'text', 'wifi', 'contact'] as DataType[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setDataType(type)}
+                    className={`flex-1 px-3 py-2 text-xs font-jetbrains tracking-[0.02em] rounded transition-colors capitalize ${
+                      dataType === type
+                        ? 'bg-violet text-background'
+                        : 'text-muted hover:text-primary'
+                    }`}
+                  >
+                    {type === 'wifi' ? 'Wi-Fi' : type}
+                  </button>
+                ))}
+              </div>
+
+              {/* Mode-specific input fields */}
+              <div className="space-y-4">
+                {dataType === 'url' && (
+                  <div>
+                    <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                      Your link
+                    </label>
+                    <input
+                      type="text"
+                      value={urlData}
+                      onChange={(e) => setUrlData(e.target.value)}
+                      className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                )}
+
+                {dataType === 'text' && (
+                  <div>
+                    <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                      Your text
+                    </label>
+                    <textarea
+                      value={textData}
+                      onChange={(e) => setTextData(e.target.value)}
+                      className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50 min-h-[100px] resize-y"
+                      placeholder="Type any text..."
+                      rows={4}
+                    />
+                  </div>
+                )}
+
+                {dataType === 'wifi' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Network name (SSID)
+                      </label>
+                      <input
+                        type="text"
+                        value={wifiData.ssid}
+                        onChange={(e) => setWifiData({ ...wifiData, ssid: e.target.value })}
+                        className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                        placeholder="MyNetwork"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={wifiData.showPassword ? 'text' : 'password'}
+                          value={wifiData.password}
+                          onChange={(e) => setWifiData({ ...wifiData, password: e.target.value })}
+                          className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50 pr-10"
+                          placeholder="Password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setWifiData({ ...wifiData, showPassword: !wifiData.showPassword })}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors"
+                        >
+                          {wifiData.showPassword ? '🙈' : '👁️'}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Security type
+                      </label>
+                      <select
+                        value={wifiData.security}
+                        onChange={(e) => setWifiData({ ...wifiData, security: e.target.value as any })}
+                        className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                      >
+                        <option value="WPA">WPA/WPA2</option>
+                        <option value="WEP">WEP</option>
+                        <option value="none">None (open network)</option>
+                      </select>
+                    </div>
+                    <p className="text-muted font-jetbrains text-[10px] tracking-[0.02em]">
+                      Works with iOS Camera and most Android QR scanners — auto-connects to the network.
+                    </p>
+                  </div>
+                )}
+
+                {dataType === 'contact' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Full name
+                      </label>
+                      <input
+                        type="text"
+                        value={contactData.fullName}
+                        onChange={(e) => setContactData({ ...contactData, fullName: e.target.value })}
+                        className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                        placeholder="John Doe"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Phone number
+                      </label>
+                      <input
+                        type="text"
+                        value={contactData.phone}
+                        onChange={(e) => setContactData({ ...contactData, phone: e.target.value })}
+                        className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                        placeholder="+1 234 567 8900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={contactData.email}
+                        onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
+                        className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                        placeholder="john@example.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Company (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={contactData.company}
+                        onChange={(e) => setContactData({ ...contactData, company: e.target.value })}
+                        className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                        placeholder="Acme Inc."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-primary font-inter text-lg tracking-[0.02em] mb-2 text-muted font-medium">
+                        Website (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={contactData.website}
+                        onChange={(e) => setContactData({ ...contactData, website: e.target.value })}
+                        className="w-full px-4 py-3 bg-background/50 border border-glass-border rounded-lg text-primary font-jetbrains text-xs tracking-[0.02em] focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/50"
+                        placeholder="https://example.com"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Preset Gallery */}
@@ -407,11 +662,11 @@ function App() {
           </div>
 
           {/* Right Panel - Sticky Preview */}
-          <div className="lg:sticky lg:top-8 h-fit relative">
+          <div className="lg:sticky lg:top-8 h-fit relative w-full">
             {/* Accent Glow Blob */}
             <div className="absolute inset-0 bg-gradient-to-br from-amber/50 via-violet/40 to-amber/50 blur-[120px] opacity-50 rounded-full pointer-events-none -z-10"></div>
             
-            <div className="bg-glass-bg backdrop-blur-[20px] border border-glass-border rounded-2xl p-8 relative">
+            <div className="bg-glass-bg backdrop-blur-[20px] border border-glass-border rounded-2xl p-8 relative min-h-[450px] w-full">
               {/* Top Row with Chips and Preview Heading */}
               <div className="flex items-center justify-between mb-6">
                 <div className="bg-glass-bg backdrop-blur-[20px] border border-glass-border rounded-full px-3 py-1">
@@ -426,6 +681,29 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* Footer */}
+        <footer className="mt-16 pt-8 border-t border-glass-border">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 md:gap-0">
+            <p className="text-muted font-inter text-sm">© 2026 QR Studio</p>
+            <div className="flex gap-5">
+              <a
+                href="https://github.com/twjkcmd/qr-studio"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted font-inter text-sm hover:text-violet transition-colors"
+              >
+                GitHub
+              </a>
+              <a
+                href="mailto:fetchback5@gmail.com"
+                className="text-muted font-inter text-sm hover:text-violet transition-colors"
+              >
+                Contact
+              </a>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   )
